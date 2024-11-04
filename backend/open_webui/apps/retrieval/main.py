@@ -117,6 +117,8 @@ from open_webui.utils.misc import (
 )
 from open_webui.utils.utils import get_admin_user, get_verified_user
 
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter, TokenTextSplitter
 from langchain_community.document_loaders import (
     YoutubeLoader,
@@ -715,11 +717,13 @@ def save_docs_to_vector_db(
 
     if split:
         if app.state.config.TEXT_SPLITTER in ["", "character"]:
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=app.state.config.CHUNK_SIZE,
-                chunk_overlap=app.state.config.CHUNK_OVERLAP,
-                add_start_index=True,
-            )
+            embeddings = OllamaEmbeddings(model='avr/sfr-embedding-mistral:latest')
+            text_splitter = SemanticChunker(embeddings, add_start_index=True)
+            #text_splitter = RecursiveCharacterTextSplitter(
+            #    chunk_size=app.state.config.CHUNK_SIZE,
+            #    chunk_overlap=app.state.config.CHUNK_OVERLAP,
+            #    add_start_index=True,
+            #)
         elif app.state.config.TEXT_SPLITTER == "token":
             log.info(
                 f"Using token text splitter: {app.state.config.TIKTOKEN_ENCODING_NAME}"
