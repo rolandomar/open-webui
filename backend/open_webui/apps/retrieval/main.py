@@ -719,7 +719,7 @@ def save_docs_to_vector_db(
     if split:
         if app.state.config.TEXT_SPLITTER in ["", "character"]:
             embeddings = OllamaEmbeddings(model='avr/sfr-embedding-mistral:f16')
-            text_splitter = SemanticChunker(embeddings, add_start_index=True)
+            text_splitter = SemanticChunker(embeddings, add_start_index=True, breakpoint_threshold_type="gradient")
             #text_splitter = RecursiveCharacterTextSplitter(
             #    chunk_size=app.state.config.CHUNK_SIZE,
             #    chunk_overlap=app.state.config.CHUNK_OVERLAP,
