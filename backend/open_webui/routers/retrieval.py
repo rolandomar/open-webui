@@ -24,7 +24,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import tiktoken
 
-
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter, TokenTextSplitter
 from langchain_core.documents import Document
 
@@ -696,11 +697,15 @@ def save_docs_to_vector_db(
 
     if split:
         if request.app.state.config.TEXT_SPLITTER in ["", "character"]:
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=request.app.state.config.CHUNK_SIZE,
-                chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
-                add_start_index=True,
-            )
+            print("Before encodings")
+            embeddings = OllamaEmbeddings(model='avr/sfr-embedding-mistral:f16', base_url="http://127.0.0.1:11434")
+            text_splitter = SemanticChunker(embeddings, add_start_index=True, breakpoint_threshold_type="gradient")
+            print("after Before encodings")
+            #text_splitter = RecursiveCharacterTextSplitter(
+            #    chunk_size=request.app.state.config.CHUNK_SIZE,
+            #    chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
+            #    add_start_index=True,
+            #)
         elif request.app.state.config.TEXT_SPLITTER == "token":
             log.info(
                 f"Using token text splitter: {request.app.state.config.TIKTOKEN_ENCODING_NAME}"
