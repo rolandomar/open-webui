@@ -25,7 +25,8 @@ from pydantic import BaseModel
 import tiktoken
 
 from langchain_experimental.text_splitter import SemanticChunker
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings
+#from langchain_community.embeddings import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter, TokenTextSplitter
 from langchain_core.documents import Document
 
@@ -729,7 +730,9 @@ def save_docs_to_vector_db(
         if request.app.state.config.TEXT_SPLITTER in ["", "character"]:
             print("Before encodings")
             embeddings = OllamaEmbeddings(model='avr/sfr-embedding-mistral:f16', base_url="http://127.0.0.1:11434")
+            #embeddings = OllamaEmbeddings(model='llama3.3:latest', base_url="http://127.0.0.1:11434")
             text_splitter = SemanticChunker(embeddings, add_start_index=True, breakpoint_threshold_type="gradient")
+            #text_splitter = SemanticChunker(embeddings, add_start_index=True, breakpoint_threshold_type='percentile', breakpoint_threshold_amount=90)
             print("after Before encodings")
             #text_splitter = RecursiveCharacterTextSplitter(
             #    chunk_size=request.app.state.config.CHUNK_SIZE,
