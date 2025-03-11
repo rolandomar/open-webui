@@ -812,12 +812,41 @@ def save_docs_to_vector_db(
                 f"Using token text splitter: {request.app.state.config.TIKTOKEN_ENCODING_NAME}"
             )
 
-            tiktoken.get_encoding(str(request.app.state.config.TIKTOKEN_ENCODING_NAME))
-            text_splitter = TokenTextSplitter(
-                encoding_name=str(request.app.state.config.TIKTOKEN_ENCODING_NAME),
-                chunk_size=request.app.state.config.CHUNK_SIZE,
-                chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
+            encoding_name = str(request.app.state.config.TIKTOKEN_ENCODING_NAME)
+            encoding = tiktoken.get_encoding(encoding_name)
+            #text_splitter = TokenTextSplitter(
+            #    encoding_name=str(request.app.state.config.TIKTOKEN_ENCODING_NAME),
+            #    chunk_size=request.app.state.config.CHUNK_SIZE,
+            #    chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
+            #    add_start_index=True,
+            #)
+            
+            embeddings = OllamaEmbeddings(model='avr/sfr-embedding-mistral:f16', base_url="http://127.0.0.1:11434")
+            def preprocess_text(text):
+                """Ensure input text is chunked within token limits before passing to SemanticChunker"""
+                tokens = encoding.encode(text)
+                chunk_size = request.app.state.config.CHUNK_SIZE
+                chunked_texts = [
+                    encoding.decode(tokens[i:i + chunk_size])
+                    for i in range(0, len(tokens), chunk_size)
+                ]
+                return chunked_texts
+
+            # ✅ Preprocess documents into token-limited chunks
+            processed_docs = []
+            for doc in docs:
+                chunked_texts = preprocess_text(doc.page_content)
+                for chunk in chunked_texts:
+                    processed_docs.append(doc.__class__(page_content=chunk, metadata=doc.metadata))
+
+            # ✅ Use processed_docs instead of original docs
+            docs = processed_docs
+            
+            # ✅ Now apply SemanticChunker on the already token-limited text
+            text_splitter = SemanticChunker(
+                embeddings,
                 add_start_index=True,
+                breakpoint_threshold_type="gradient",
             )
         else:
             raise ValueError(ERROR_MESSAGES.DEFAULT("Invalid text splitter"))
