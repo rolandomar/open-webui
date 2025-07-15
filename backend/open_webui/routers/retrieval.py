@@ -28,8 +28,9 @@ from pydantic import BaseModel
 import tiktoken
 
 
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_ollama import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter, TokenTextSplitter
-from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_core.documents import Document
 
 from open_webui.models.files import FileModel, Files
@@ -70,7 +71,6 @@ from open_webui.retrieval.web.external import search_external
 
 from open_webui.retrieval.utils import (
     get_embedding_function,
-    get_reranking_function,
     get_model_path,
     query_collection,
     query_collection_with_hybrid_search,
@@ -825,12 +825,6 @@ async def update_rag_config(
                 request.app.state.config.RAG_EXTERNAL_RERANKER_API_KEY,
                 True,
             )
-
-            request.app.state.RERANKING_FUNCTION = get_reranking_function(
-                request.app.state.config.RAG_RERANKING_ENGINE,
-                request.app.state.config.RAG_RERANKING_MODEL,
-                request.app.state.rf,
-            )
         except Exception as e:
             log.error(f"Error loading reranking model: {e}")
             request.app.state.config.ENABLE_RAG_HYBRID_SEARCH = False
@@ -1149,73 +1143,59 @@ def save_docs_to_vector_db(
 
     if split:
         if request.app.state.config.TEXT_SPLITTER in ["", "character"]:
+            #embeddings = OllamaEmbeddings(model='avr/sfr-embedding-mistral:f16', base_url="http://127.0.0.1:11434")
+            #embeddings = OllamaEmbeddings(model='bge-m3:latest', base_url="http://127.0.0.1:11434")
+            #text_splitter = SemanticChunker(embeddings, add_start_index=True, breakpoint_threshold_type="gradient")
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=request.app.state.config.CHUNK_SIZE,
                 chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
                 add_start_index=True,
             )
-            docs = text_splitter.split_documents(docs)
         elif request.app.state.config.TEXT_SPLITTER == "token":
             log.info(
                 f"Using token text splitter: {request.app.state.config.TIKTOKEN_ENCODING_NAME}"
             )
 
-            tiktoken.get_encoding(str(request.app.state.config.TIKTOKEN_ENCODING_NAME))
+            #encoding_name = str(request.app.state.config.TIKTOKEN_ENCODING_NAME)
+            #encoding = tiktoken.get_encoding(encoding_name)
             text_splitter = TokenTextSplitter(
                 encoding_name=str(request.app.state.config.TIKTOKEN_ENCODING_NAME),
                 chunk_size=request.app.state.config.CHUNK_SIZE,
                 chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
                 add_start_index=True,
             )
-            docs = text_splitter.split_documents(docs)
-        elif request.app.state.config.TEXT_SPLITTER == "markdown_header":
-            log.info("Using markdown header text splitter")
+            
+            #embeddings = OllamaEmbeddings(model='avr/sfr-embedding-mistral:f16', base_url="http://127.0.0.1:11434")
+            #def preprocess_text(text):
+            #    """Ensure input text is chunked within token limits before passing to SemanticChunker"""
+            #    tokens = encoding.encode(text)
+            #    chunk_size = request.app.state.config.CHUNK_SIZE
+            #    chunked_texts = [
+            #        encoding.decode(tokens[i:i + chunk_size])
+            #        for i in range(0, len(tokens), chunk_size)
+            #    ]
+            #    return chunked_texts
 
-            # Define headers to split on - covering most common markdown header levels
-            headers_to_split_on = [
-                ("#", "Header 1"),
-                ("##", "Header 2"),
-                ("###", "Header 3"),
-                ("####", "Header 4"),
-                ("#####", "Header 5"),
-                ("######", "Header 6"),
-            ]
+            # ✅ Preprocess documents into token-limited chunks
+            #processed_docs = []
+            #for doc in docs:
+            #    chunked_texts = preprocess_text(doc.page_content)
+            #    for chunk in chunked_texts:
+            #        processed_docs.append(doc.__class__(page_content=chunk, metadata=doc.metadata))
 
-            markdown_splitter = MarkdownHeaderTextSplitter(
-                headers_to_split_on=headers_to_split_on,
-                strip_headers=False,  # Keep headers in content for context
-            )
-
-            md_split_docs = []
-            for doc in docs:
-                md_header_splits = markdown_splitter.split_text(doc.page_content)
-                text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=request.app.state.config.CHUNK_SIZE,
-                    chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
-                    add_start_index=True,
-                )
-                md_header_splits = text_splitter.split_documents(md_header_splits)
-
-                # Convert back to Document objects, preserving original metadata
-                for split_chunk in md_header_splits:
-                    headings_list = []
-                    # Extract header values in order based on headers_to_split_on
-                    for _, header_meta_key_name in headers_to_split_on:
-                        if header_meta_key_name in split_chunk.metadata:
-                            headings_list.append(
-                                split_chunk.metadata[header_meta_key_name]
-                            )
-
-                    md_split_docs.append(
-                        Document(
-                            page_content=split_chunk.page_content,
-                            metadata={**doc.metadata, "headings": headings_list},
-                        )
-                    )
-
-            docs = md_split_docs
+            # ✅ Use processed_docs instead of original docs
+            #docs = processed_docs
+            
+            # ✅ Now apply SemanticChunker on the already token-limited text
+            #text_splitter = SemanticChunker(
+            #    embeddings,
+            #    add_start_index=True,
+            #    breakpoint_threshold_type="gradient",
+            #)
         else:
             raise ValueError(ERROR_MESSAGES.DEFAULT("Invalid text splitter"))
+
+        docs = text_splitter.split_documents(docs)
 
     if len(docs) == 0:
         raise ValueError(ERROR_MESSAGES.EMPTY_CONTENT)
@@ -1801,16 +1781,6 @@ def search_web(request: Request, engine: str, query: str) -> list[SearchResult]:
             )
         else:
             raise Exception("No TAVILY_API_KEY found in environment variables")
-    elif engine == "exa":
-        if request.app.state.config.EXA_API_KEY:
-            return search_exa(
-                request.app.state.config.EXA_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No EXA_API_KEY found in environment variables")
     elif engine == "searchapi":
         if request.app.state.config.SEARCHAPI_API_KEY:
             return search_searchapi(
@@ -1844,13 +1814,6 @@ def search_web(request: Request, engine: str, query: str) -> list[SearchResult]:
             request.app.state.config.BING_SEARCH_V7_SUBSCRIPTION_KEY,
             request.app.state.config.BING_SEARCH_V7_ENDPOINT,
             str(DEFAULT_LOCALE),
-            query,
-            request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-            request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-        )
-    elif engine == "exa":
-        return search_exa(
-            request.app.state.config.EXA_API_KEY,
             query,
             request.app.state.config.WEB_SEARCH_RESULT_COUNT,
             request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
@@ -2049,13 +2012,7 @@ def query_doc_handler(
                     query, prefix=prefix, user=user
                 ),
                 k=form_data.k if form_data.k else request.app.state.config.TOP_K,
-                reranking_function=(
-                    lambda sentences: (
-                        request.app.state.RERANKING_FUNCTION(sentences, user=user)
-                        if request.app.state.RERANKING_FUNCTION
-                        else None
-                    )
-                ),
+                reranking_function=request.app.state.rf,
                 k_reranker=form_data.k_reranker
                 or request.app.state.config.TOP_K_RERANKER,
                 r=(
@@ -2112,9 +2069,7 @@ def query_collection_handler(
                     query, prefix=prefix, user=user
                 ),
                 k=form_data.k if form_data.k else request.app.state.config.TOP_K,
-                reranking_function=lambda sentences: request.app.state.RERANKING_FUNCTION(
-                    sentences, user=user
-                ),
+                reranking_function=request.app.state.rf,
                 k_reranker=form_data.k_reranker
                 or request.app.state.config.TOP_K_RERANKER,
                 r=(
